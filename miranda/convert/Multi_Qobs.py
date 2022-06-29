@@ -14,27 +14,6 @@ path = '/home/mohammad/Dossier_travail/Raven/test_Q_deh'
 
 
 # %% This is exrtacted from the .json file of deh_cf_attrs.json (miranda)
-# cf_table = {
-#   "Header": {
-#     "Conventions": "CF-1.7 CMIP-6.2",
-#     "data_specs_version": "00.00.01",
-#     "institution": "DEH",
-#     "product": "station-obs",
-#     "realm": "land",
-#     "table_date": "2021-10-26",
-#     "table_id": "DEH"
-#   },
-#   "variable_entry": {
-#     "flag": {
-#       "comment": "See DEH technical information for details.",
-#       "long_name": "data flag"
-#     },
-#     "qobs": {
-#       "long_name": "River discharge",
-#       "units": "m3 s-1"
-#     }
-#   }
-# }
 
 meta_patterns = {
     "Station: ": "name",
@@ -45,95 +24,6 @@ meta_patterns = {
 
 data_header_pattern = "Station Date Débit (m³/s) Remarque\n"
 
-# %% calculation block
-
-# def extract_daily(path)  -> Tuple[dict, pd.DataFrame]:
-#     """Extract data and metadata from DEH (MELCC) stream flow file."""
-
-#     with open(path, encoding="latin1") as fh:
-#         txt = fh.read()
-#         txt = re.sub(" +", " ", txt)
-#         meta, data = txt.split(data_header_pattern)
-
-#     m = dict()
-#     for key in meta_patterns:
-#         # Various possible separators to take into account
-#         m[meta_patterns[key]] = (
-#             meta.split(key)[1].split(" \n")[0].split("\n")[0].split(" Régime")[0]
-#         )
-
-#     d = pd.read_csv(
-#         path,
-#         delimiter=r"\s+",
-#         skiprows=len(meta.splitlines()),
-#         encoding="latin1",
-#         converters={0: lambda x: str(x)},  # noqa
-#         index_col=1,
-#         parse_dates=True,
-#         infer_datetime_format=True,
-#     )
-#     if len(d["Station"].unique()) == 1:
-#         m["station"] = d["Station"].unique()[0]
-#         d = d.drop("Station", axis=1)
-#     else:
-#         raise ValueError("Multiple stations detected in the same file.")
-#     d = d.rename(columns={"Remarque": "Nan", "(m³/s)": "Remarque"})
-#     d.index.names = ["time"]
-#     d = d.drop("Nan", axis=1)
-
-#     return m, d
-
-
-# def to_cf(meta: dict, data: pd.DataFrame, cf_table) -> xr.Dataset:
-#     """Return CF-compliant metadata."""
-#     ds = xr.Dataset()
-
-#     ds["q"] = xr.DataArray(d["Débit"], attrs=cf_table['variable_entry']['q'])
-#     ds["flag"] = xr.DataArray(data["Remarque"], attrs=cf_table["flag"])
-
-#     ds["name"] = xr.DataArray(meta["name"])
-#     ds["station_id"] = xr.DataArray(meta["station"])
-
-#     ds["area"] = xr.DataArray(
-#         u.convert(float(meta["bv"].split(" ")[0]), meta["bv"].split(" ")[1], "km²"),
-#         attrs={"long_name": "drainage area", "units": "km2"},
-#     )
-
-#     def parse_dms(coord):
-#         deg, minutes, seconds, _ = re.split("[°'\"]", coord)
-#         if float(deg) > 0:
-#             return round(
-#                 float(deg) + float(minutes) / 60 + float(seconds) / (60 * 60), 6
-#             )
-#         return round(float(deg) - (float(minutes) / 60 + float(seconds) / (60 * 60)), 6)
-
-#     coords = m["coords"].split(" // ")
-#     ds["lat"] = xr.DataArray(
-#         parse_dms(coords[0]),
-#         attrs={
-#             "standard_name": "latitude",
-#             "long_name": "latitude",
-#             "units": "decimal_degrees",
-#         },
-#     )
-#     ds["lon"] = xr.DataArray(
-#         parse_dms(coords[1]),
-#         attrs={
-#             "standard_name": "longitude",
-#             "long_name": "longitude",
-#             "units": "decimal_degrees",
-#         },
-#     )
-
-#     ds.attrs[
-#         "institution"
-#     ] = "Ministère de l'Environnement et de la Lutte contre les changements climatiques"
-#     ds.attrs[
-#         "source"
-#     ] = "Hydrometric data <https://www.cehq.gouv.qc.ca/hydrometrie/historique_donnees/index.asp>"
-#     ds.attrs["redistribution"] = "Redistribution policy unknown. For internal use only."
-
-#     return ds
 # %%
 os.chdir(path)
 files = glob ("*.txt")
@@ -166,7 +56,8 @@ for i in range(len(files)):
     infer_datetime_format=True,
 )
     d = d.drop(['Remarque','(m³/s)'], axis=1)
-    d=d.dropna()
+    #d=d.dropna()
+    d = d.fillna(-1.2345)  # fill NaNs with -1.2345
     if len(d["Station"].unique()) == 1:
         m["station"] = d["Station"].unique()[0]
         d = d.drop("Station", axis=1)
@@ -220,22 +111,17 @@ for i in range(len(files)):
 
 dataset = dataset.rename_axis('time').reset_index()
 
-
 dataset = dataset.set_index(['station_id', 'time'])
 dataset = dataset[~dataset.index.duplicated(keep='first')]
 
 ds = dataset.to_xarray()
-
 
 ds2 = latitude.set_index(['station_id','lat']).to_xarray()
 ds3 = longitude.set_index(['station_id','lon']).to_xarray()
 
 ds_merged = xr.merge([ds, ds2,ds3])
 
-ds.to_netcdf("SLSO_qobs2.nc",'w')
-
-
-
+ds.to_netcdf("SLSO_qobs.nc",'w')
 
 # %% to use with shapefile script finding the subbasin outlets with gauges
 dataset2 = pd.merge(latitude, longitude, on='station_id')
