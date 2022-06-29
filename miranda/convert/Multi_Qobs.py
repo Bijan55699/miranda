@@ -5,6 +5,8 @@ from glob import glob
 import re,os
 import xarray as xr
 from typing import Optional, Tuple, Union
+from shapely.geometry import Point
+import geopandas as gpd
 
 # %% input: chnage the path to the directory in which the text files reside.
 
@@ -237,13 +239,18 @@ ds.to_netcdf("SLSO_qobs2.nc",'w')
 
 # %% to use with shapefile script finding the subbasin outlets with gauges
 dataset2 = pd.merge(latitude, longitude, on='station_id')
+gdf_points = gpd.GeoDataFrame(
+    dataset2, geometry=gpd.points_from_xy(dataset2.lon, dataset2.lat))
+
+gdf_points = gdf_points.set_crs(epsg = 4326)
+
+subbasin = gpd.read_file('/home/mohammad/Dossier_travail/Hydrotel/DEH/HRUs_Quebec_meridional/20P/subbasin.shp')
+
+subbasin = subbasin.to_crs(4326) # EPSG=4326 (WGS84)
 
 
+dataset3 = gpd.sjoin(gdf_points,subbasin,how = 'left',op='within')
 
+dataset4 = dataset3[['geometry','station_id','SubId']]
 
-
-
-
-
-
-
+dataset4.to_file('/home/mohammad/Dossier_travail/Hydrotel/DEH/HRUs_Quebec_meridional/20P/SLSO_gauges.shp')
